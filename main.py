@@ -1,48 +1,65 @@
-import os
-from dotenv import load_dotenv
-from google import genai
+import sys
+import requests
+import json
+from prompts import system_prompt
+from functions.get_files_info import get_files_info, schema_get_files_info
 
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
-gemini_client = genai.Client(api_key=api_key) 
-response = gemini_client.models.generate_content(
-     model="gemini-2.5-flash",
-     contents="What is the capital of France?"
-)
-print(response.text)     
+OLLAMA_URL = "http://localhost:11434/api/chat"
+WORKING_DIR = "calculator"   # or wherever you want the files read from
 
 
-# import os
-# from dotenv import load_dotenv
-# from openai import OpenAI
+def main():
+    if len(sys.argv) < 2:
+        print("I need a prompt")
+        sys.exit(1)
 
-# load_dotenv()
+    verbose = False
+    if len(sys.argv) == 3 and sys.argv[2] == "--verbose":
+        verbose = True
 
-# google_api_key = os.getenv("GEMINI_API_KEY")
+    prompt = sys.argv[1]
 
-# # Gemini-compatible OpenAI endpoint
-# gemini_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    # Prepare the payload for Ollama
+    payload = {
+        "model": "llama3.2",  # change to your installed model
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        "tools": [schema_get_files_info],  # function calling
+        "stream": False
+    }
 
-# # Create Gemini client using OpenAI SDK
-# gemini = OpenAI(api_key=google_api_key, base_url=gemini_url)
+    response = requests.post(OLLAMA_URL, json=payload)
+    if response.status_code != 200:
+        print("Error:", response.text)
+        return
 
-# system_message = "You are a helpful assistant"
+    data = response.json()
 
-# def message_gpt(prompt):
-#     messages = [
-#         {"role": "system", "content": system_message},
-#         {"role": "user", "content": prompt}
-#     ]
+    # Check for tool calls
+    if "tool_calls" in data["message"]:
+        for tool_call in data["message"]["tool_calls"]:
+            func_name = tool_call["function"]["name"]
+            args = tool_call["function"]["arguments"]  # already a dict
 
-#     response = gemini.chat.completions.create(
-#         model="gemini-2.5-pro",
-#         messages=messages
-#     )
+            # Print the command the AI wants to call
+            print(f"Calling function: {func_name}({args})")
 
-#     return response.choices[0].message.content
+            # Execute the function if it's get_files_info
+            if func_name == "get_files_info":
+                directory = args.get("directory", ".")
+                result = get_files_info(WORKING_DIR, directory)
+                print(f"\n[Function {func_name} Output]:\n{result}")
+                return
+
+    # Otherwise, just print the AI text
+    print(data["message"]["content"])
+
+    if verbose:
+        print(f"\nUser prompt: {prompt}")
+        print("(Ollama does not provide token counts)")
 
 
-# # ---- Example usage ----
-# result = message_gpt("What is the capital of France?")
-# print(result)
-#  """
+if __name__ == "__main__":
+    main()
