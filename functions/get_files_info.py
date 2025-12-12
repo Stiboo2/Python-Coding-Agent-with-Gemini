@@ -20,6 +20,7 @@ def get_files_info(working_directory, directory="."):
 
 
 # ---- Ollama function schema ----
+# get_files_info schema
 schema_get_files_info = {
     "type": "function",
     "function": {
@@ -37,3 +38,5 @@ schema_get_files_info = {
         }
     }
 }
+
+# Similar dicts for schema_get_file_content, schema_write_file, schema_run_python_file
